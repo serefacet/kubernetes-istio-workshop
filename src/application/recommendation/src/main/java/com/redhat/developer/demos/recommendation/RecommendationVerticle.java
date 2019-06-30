@@ -19,11 +19,11 @@ public class RecommendationVerticle extends AbstractVerticle {
     private static final String HTTP_NOW = "now.httpbin.org";
 
     private static final String HOSTNAME = parseContainerIdFromHostname(
-        System.getenv().getOrDefault("HOSTNAME", "unknown")
+            System.getenv().getOrDefault("HOSTNAME", "unknown")
     );
 
     private static final int LISTEN_ON = Integer.parseInt(
-        System.getenv().getOrDefault("LISTEN_ON", "8080")
+            System.getenv().getOrDefault("LISTEN_ON", "8080")
     );
 
     static String parseContainerIdFromHostname(String hostname) {
@@ -36,6 +36,7 @@ public class RecommendationVerticle extends AbstractVerticle {
      * Counter to help us see the lifecycle
      */
     private int count = 0;
+    private int misbehaveCount = 0;
 
     /**
      * Flag for throwing a 503 when enabled
@@ -71,11 +72,11 @@ public class RecommendationVerticle extends AbstractVerticle {
     private void getRecommendations(RoutingContext ctx) {
         if (misbehave) {
             count = 0;
-            logger.info(String.format("Misbehaving %d", count));
+            logger.info(String.format("Misbehaving %d", ++misbehaveCount));
             ctx.response().setStatusCode(503).end(String.format("recommendation misbehavior from '%s'\n", HOSTNAME));
         } else {
-            count++;
-            ctx.response().end(String.format(RESPONSE_STRING_FORMAT, HOSTNAME, count));
+            misbehaveCount = 0;
+            ctx.response().end(String.format(RESPONSE_STRING_FORMAT, HOSTNAME, ++count));
         }
     }
 
@@ -83,18 +84,18 @@ public class RecommendationVerticle extends AbstractVerticle {
         count++;
         final WebClient client = WebClient.create(vertx);
         client.get(80, HTTP_NOW, "/")
-        .timeout(5000)
-        .as(BodyCodec.jsonObject())
-            .send(ar -> {
-                if (ar.succeeded()) {
-                    HttpResponse<JsonObject> response = ar.result();
-                    JsonObject body = response.body();
-                    String now = body.getJsonObject("now").getString("rfc2822");
-                    ctx.response().end(now + " " + String.format(RESPONSE_STRING_FORMAT, HOSTNAME, count));
-                } else {
-                    ctx.response().setStatusCode(503).end(ar.cause().getMessage());
-                }
-            });
+                .timeout(5000)
+                .as(BodyCodec.jsonObject())
+                .send(ar -> {
+                    if (ar.succeeded()) {
+                        HttpResponse<JsonObject> response = ar.result();
+                        JsonObject body = response.body();
+                        String now = body.getJsonObject("now").getString("rfc2822");
+                        ctx.response().end(now + " " + String.format(RESPONSE_STRING_FORMAT, HOSTNAME, count));
+                    } else {
+                        ctx.response().setStatusCode(503).end(ar.cause().getMessage());
+                    }
+                });
     }
 
     private void misbehave(RoutingContext ctx) {
@@ -107,10 +108,6 @@ public class RecommendationVerticle extends AbstractVerticle {
         this.misbehave = false;
         logger.info("'misbehave' has been set to 'false'");
         ctx.response().end("Following requests to '/' will return a 200\n");
-    }
-
-    public static void main(String[] args) {
-        Vertx.vertx().deployVerticle(new RecommendationVerticle());
     }
 
 }
